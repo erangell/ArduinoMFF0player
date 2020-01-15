@@ -13,6 +13,8 @@
  * Eight 470 ohm resistors from each ON position of each switch to GND
  * This allows selection of 255 directories (Directory #0 always plays silence).
  * 
+ * Even numbered pins 22-36 are used to choose the starting song number within the selected directory
+ * 
  * Store MIDI Format 0 files in SD directories named /001 /002 /003 etc.
  * File names must be: 001.mid, 002.mid, 003.mid, etc in the order to be played.
  * 
@@ -87,6 +89,16 @@ const int b3 = 29;
 const int b2 = 27;
 const int b1 = 25;
 const int b0 = 23;
+
+//DIP SWITCHES FOR CHOOSING STARTING SONG NUMBER
+const int s7 = 36;
+const int s6 = 34;
+const int s5 = 32;
+const int s4 = 30;
+const int s3 = 28;
+const int s2 = 26;
+const int s1 = 24;
+const int s0 = 22;
 
 boolean file_opened = false;
 boolean last_block = false;
@@ -177,7 +189,16 @@ void setup() {
   pinMode(b2, INPUT);
   pinMode(b1, INPUT);
   pinMode(b0, INPUT);
-  
+
+  pinMode(s7, INPUT);
+  pinMode(s6, INPUT);
+  pinMode(s5, INPUT);
+  pinMode(s4, INPUT);
+  pinMode(s3, INPUT);
+  pinMode(s2, INPUT);
+  pinMode(s1, INPUT);
+  pinMode(s0, INPUT);
+
   Serial.print("\nInitializing SD card...");
 
   pinMode(SSPIN, OUTPUT);
@@ -200,6 +221,17 @@ void setup() {
   n = (n*2) + digitalRead(b2);
   n = (n*2) + digitalRead(b1);
   inbyte = (n*2) + digitalRead(b0);
+
+  //READ DIP SWITCHES TO GET STARTING SONG NUMBER
+  int m=0;
+  m = digitalRead(s7);
+  m = (m*2) + digitalRead(s6);
+  m = (m*2) + digitalRead(s5);
+  m = (m*2) + digitalRead(s4);
+  m = (m*2) + digitalRead(s3);
+  m = (m*2) + digitalRead(s2);
+  m = (m*2) + digitalRead(s1);
+  currentSongNum = (m*2) + digitalRead(s0);
 
   // processing resumes with loop()  
  }
