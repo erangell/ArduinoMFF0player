@@ -1,6 +1,8 @@
 #include <SD.h>
 
 /* MFF0PLAY.ino for Arduino MEGA
+ *  2020 enhancements
+ *  - use LCD Keypad shield to select song and directory
  *  
  * Arduino SD Card MIDI Song Player - by Eric Rangell 
  * Adapted from open-source Arduino MIDI code.  Published in the public domain.
@@ -30,6 +32,29 @@
  * It does not mix down tracks in Type 1 Midi Files, so they should be converted to Type 0.
  * 
  */
+
+//Uses LCD Keypad Shield - has 5 buttons + reset
+
+//Sample using LiquidCrystal library
+#include <LiquidCrystal.h>
+ 
+// select the pins used on the LCD panel
+LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
+
+// define some values used by the panel and buttons
+int lcd_key     = 0;
+int adc_key_in  = 0;
+#define btnRIGHT  0
+#define btnUP     1
+#define btnDOWN   2
+#define btnLEFT   3
+#define btnSELECT 4
+#define btnNONE   5
+
+//LCDKeypad uses A0 for Buttons
+int buttonsPin = A0;
+
+ 
 #define SD_BUFFER_SIZE 512 
 #define HEADER_CHUNK_ID 0x4D546864  // MThd
 #define TRACK_CHUNK_ID 0x4D54726B   // MTrk
@@ -132,8 +157,8 @@ boolean firstNote = true;
 int currFreq = -1;
 unsigned long lastMillis;
 
-int inbyte = 1;
-int currentSongNum = 1;
+int dirnum = 1;         //Directory number (000-999)
+int currentSongNum = 1; //Song number (000.MID - 999.MID)
 
 boolean debugSong = false;
 
@@ -199,45 +224,58 @@ void setup() {
   pinMode(s1, INPUT);
   pinMode(s0, INPUT);
 
+  lcd.begin(16, 2);              // start the library
+  lcd.setCursor(0,0);
+  lcd.print("MFF0PLAY20200704"); 
+  lcd.setCursor(0,1);
+  lcd.print("Initg SD Card...");  
+
   Serial.print("\nInitializing SD card...");
 
   pinMode(SSPIN, OUTPUT);
  
   if (!SD.begin(spi1, spi2, spi3, spi4)) {
+    lcd.setCursor(0,1);
+    lcd.print("Check SD Card!!!");
     Serial.println("initialization failed!  Check wiring, if card inserted, and pin to use for your SD shield");
     // don't do anything more:
     while (1) ;
   } else {
     Serial.println("Wiring is correct and a card is present.");
+    lcd.setCursor(0,1);
+    lcd.print("SD Card Good    ");
+    delay(1000);
   }
   
   //READ DIP SWITCHES TO GET DIRECTORY NUMBER
-  int n=0;
-  n = digitalRead(b7);
-  n = (n*2) + digitalRead(b6);
-  n = (n*2) + digitalRead(b5);
-  n = (n*2) + digitalRead(b4);
-  n = (n*2) + digitalRead(b3);
-  n = (n*2) + digitalRead(b2);
-  n = (n*2) + digitalRead(b1);
-  inbyte = (n*2) + digitalRead(b0);
+  //int n=0;
+  //n = digitalRead(b7);
+  //n = (n*2) + digitalRead(b6);
+  //n = (n*2) + digitalRead(b5);
+  //n = (n*2) + digitalRead(b4);
+  //n = (n*2) + digitalRead(b3);
+  //n = (n*2) + digitalRead(b2);
+  //n = (n*2) + digitalRead(b1);
+  //dirnum = (n*2) + digitalRead(b0);
 
   //READ DIP SWITCHES TO GET STARTING SONG NUMBER
-  int m=0;
-  m = digitalRead(s7);
-  m = (m*2) + digitalRead(s6);
-  m = (m*2) + digitalRead(s5);
-  m = (m*2) + digitalRead(s4);
-  m = (m*2) + digitalRead(s3);
-  m = (m*2) + digitalRead(s2);
-  m = (m*2) + digitalRead(s1);
-  currentSongNum = (m*2) + digitalRead(s0);
+  //int m=0;
+  //m = digitalRead(s7);
+  //m = (m*2) + digitalRead(s6);
+  //m = (m*2) + digitalRead(s5);
+  //m = (m*2) + digitalRead(s4);
+  //m = (m*2) + digitalRead(s3);
+  //m = (m*2) + digitalRead(s2);
+  //m = (m*2) + digitalRead(s1);
+  //currentSongNum = (m*2) + digitalRead(s0);
 
   // processing resumes with loop()  
  }
 
-void SendAllNotesOff() 
+void SendAllNotesOff()
 {
+  int savedebug = debugSong;
+  debugSong = false;
   for (int channel = 0; channel < 16; channel++)
   {
     midiShortMsg(0xB0+channel,120,0); // all sounds off
@@ -250,6 +288,7 @@ void SendAllNotesOff()
       delay(1); 
     }
   }
+  debugSong = savedebug;
 }
 
 void logs(String thestring) {
@@ -426,9 +465,258 @@ void processTrack(long size) {
   while(counter < size) {
     //logl("Track counter", counter);
     counter += processEvent();
+    counter = checkButtons(counter,size);
   }
-  
-  
+}
+
+long checkButtons(long acounter, long asize) 
+{
+    lcd_key = read_LCD_buttons();  // read the buttons
+    int bouncedly = 250;
+ 
+    switch (lcd_key)               // depending on which button was pushed, we perform an action
+    {     
+      case btnNONE:
+      {
+        break;
+      }
+      case btnSELECT:
+      {
+        lcd.setCursor(15,0);
+        lcd.print("S");
+        SendAllNotesOff();
+        lcd.setCursor(15,0);
+        lcd.print(" ");
+        lcd.setCursor(0,0);
+        lcd.print("U/D:mode R:opts ");
+        lcd.setCursor(0,1);
+        lcd.print("L:rewind S:done ");
+        
+        bool selectMode = true;
+        
+        while(selectMode) 
+        {
+          lcd_key = read_LCD_buttons();  // read the buttons
+          delay(bouncedly);
+          switch(lcd_key)
+          {
+            case btnSELECT:
+            {
+                lcd.setCursor(15,0);
+                lcd.print("S");
+                selectMode = false;
+                break;
+            }
+            case btnLEFT:
+            {
+                lcd.setCursor(15,0);
+                lcd.print("L");
+                acounter = 0;
+                selectMode = false;
+                break;
+            }
+          }
+              
+        }
+        break;
+      }
+      case btnRIGHT:
+      {
+        lcd.setCursor(15,0);
+        lcd.print("R");
+        lcd.setCursor(13,1);
+        lcd.print(currentSongNum);
+        delay(bouncedly);
+        
+        acounter = asize;  // currentSongNum will be automatically incremented
+
+        lcd.setCursor(15,0);
+        lcd.print(">");
+        lcd.setCursor(13,1);
+        lcd.print(currentSongNum + 1);
+        
+        int held = 1;
+        while (held)
+        {
+          lcd_key = read_LCD_buttons();  // read the buttons
+          switch(lcd_key)
+          {
+            case btnRIGHT:
+            {
+                currentSongNum++;
+                lcd.setCursor(13,1);
+                lcd.print(currentSongNum + 1);
+                delay(bouncedly);
+                break;
+            }
+            case btnNONE:
+            {
+                held = 0;
+                break;
+            }
+          } // switch
+        } // while
+
+        break;
+      }
+      case btnLEFT:
+      {
+        lcd.setCursor(15,0);
+        lcd.print("L");
+        lcd.setCursor(13,1);
+        lcd.print(currentSongNum - 1);
+        delay(bouncedly);
+        
+        currentSongNum--;
+        currentSongNum--;
+        if (currentSongNum < 0)
+        {
+          currentSongNum = 0;
+        }
+        acounter = asize;
+
+        lcd.setCursor(15,0);
+        lcd.print("<");
+        lcd.setCursor(13,1);
+        lcd.print(currentSongNum);
+
+        int held = 1;
+        while (held)
+        {
+          lcd_key = read_LCD_buttons();  // read the buttons
+          switch(lcd_key)
+          {
+            case btnDOWN:
+            {
+                currentSongNum--;
+                if (currentSongNum < 0)
+                {
+                    currentSongNum = 0;
+                }
+                lcd.setCursor(13,1);
+                lcd.print(dirnum);
+                delay(bouncedly);
+                break;
+            }
+            case btnNONE:
+            {
+                held = 0;
+                break;
+            }
+          } // switch
+        } // while
+        
+        break;
+      }
+      
+      case btnUP:
+      {
+        lcd.setCursor(15,0);
+        lcd.print("U");
+        lcd.setCursor(13,1);
+        lcd.print(dirnum);
+        delay(bouncedly);
+
+        dirnum++;
+        currentSongNum = 0;
+        acounter = asize;
+        
+        lcd.setCursor(15,0);
+        lcd.print(">");
+        lcd.setCursor(13,1);
+        lcd.print(dirnum);
+        
+        int held = 1;
+        while (held)
+        {
+          lcd_key = read_LCD_buttons();  // read the buttons
+          switch(lcd_key)
+          {
+            case btnUP:
+            {
+                dirnum++;
+                lcd.setCursor(13,1);
+                lcd.print(dirnum);
+                delay(bouncedly);
+                break;
+            }
+            case btnNONE:
+            {
+                held = 0;
+                break;
+            }
+          } // switch
+        } // while
+        break;
+      }
+      
+      case btnDOWN:
+      {
+        lcd.setCursor(15,0);
+        lcd.print("D");
+        delay(bouncedly);
+        lcd.setCursor(13,1);
+        lcd.print(dirnum);
+        
+        dirnum--;
+        if (dirnum < 0)
+        {
+          dirnum = 0;
+        }
+        currentSongNum = 0;
+        acounter = asize;
+
+        lcd.setCursor(15,0);
+        lcd.print("<");
+        lcd.setCursor(13,1);
+        lcd.print(dirnum);
+
+        int held = 1;
+        while (held)
+        {
+          lcd_key = read_LCD_buttons();  // read the buttons
+          switch(lcd_key)
+          {
+            case btnDOWN:
+            {
+                dirnum--;
+                if (dirnum < 0)
+                {
+                    dirnum = 0;
+                }
+                lcd.setCursor(13,1);
+                lcd.print(dirnum);
+                delay(bouncedly);
+                break;
+            }
+            case btnNONE:
+            {
+                held = 0;
+                break;
+            }
+          } // switch
+        } // while
+
+        break;
+      }
+
+    } //switch
+    return acounter;
+}
+
+// read the buttons
+int read_LCD_buttons()
+{
+ adc_key_in = analogRead(0);      // read the value from the sensor
+ // my buttons when read are centered at these valies: 0, 144, 329, 504, 741
+ // we add approx 50 to those values and check to see if we are close
+ if (adc_key_in > 1000) return btnNONE; // We make this the 1st option for speed reasons since it will be the most likely result
+ if (adc_key_in < 50)   return btnRIGHT; 
+ if (adc_key_in < 195)  return btnUP;
+ if (adc_key_in < 380)  return btnDOWN;
+ if (adc_key_in < 555)  return btnLEFT;
+ if (adc_key_in < 790)  return btnSELECT;  
+ return btnNONE;  // when all others fail, return this...
 }
 
 
@@ -660,13 +948,16 @@ void midi2ByteMsg(int cmd, int value) {
 
 void loop()
 {   
+  lcd.setCursor(0,0);
+  lcd.print("Mode: Loop Dir  "); 
+
  if (debugSong)
  {
-     Serial.print("TOP OF LOOP: inbyte=");
-     Serial.println(inbyte);
+     Serial.print("TOP OF LOOP: dirnum=");
+     Serial.println(dirnum);
  }
  SendAllNotesOff();
- int currentDirNum = inbyte;
+ int currentDirNum = dirnum;
 
  if (currentDirNum > 0)
  {   
@@ -696,6 +987,10 @@ void loop()
        Serial.println(currentSong);
      }
 
+     lcd.setCursor(0,1);
+     lcd.print(currentSong);
+     lcd.print("    ");
+
      bool file_was_found = false;
      // test for existence of file - if it opens, close it - it will be reopened when chunks processed
      if (thefile = SD.open(currentSong,FILE_READ))
@@ -710,7 +1005,10 @@ void loop()
        {
            Serial.println("FILE NOT FOUND ");       
        }
+       lcd.setCursor(13,1);
+       lcd.print("NTF");
        file_closed = 1;
+       checkButtons(0,1);
      }
      
      //Phase processing
